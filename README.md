@@ -11,5 +11,3 @@ $ ../configure --build-type release
 $ make
 $ make install
 ```
-
-And check inside bin/
