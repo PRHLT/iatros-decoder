@@ -1,0 +1,19 @@
+2016-04-27.14-49-28.geralt rm -rf branches/ tags/ trunk/
+2016-04-27.15-17-36.geralt less config.h.cmake 
+2016-04-27.15-17-59.geralt less version.h.cmake 
+2016-04-27.15-18-03.geralt less version.h.cmake 
+2016-04-27.15-18-06.geralt less version.h.cmake 
+2016-04-27.15-18-12.geralt less version.h.cmake 
+2016-04-27.15-18-33.geralt less version.h.cmake 
+2016-04-27.15-20-58.geralt grep VERSION *
+2016-04-27.15-21-11.geralt grep "VERSION" *
+2016-04-27.15-21-34.geralt find . -name "*" -type f | xargs -I {} grep "VERSION" {}
+2016-04-27.15-21-53.geralt find . -name "*" -type f | xargs -I {} grep "VERSION" {} | less
+2016-04-27.15-22-33.geralt less CMakeLists.txt 
+2016-04-27.15-23-21.geralt less version.h.cmake 
+2016-04-27.15-23-36.geralt less CMakeLists.txt 
+2016-04-27.15-27-45.geralt less CMakeLists.txt 
+2016-04-27.15-38-38.geralt ls -lah
+2016-04-27.15-38-55.geralt subl version.h.cmake 
+2016-04-27.15-59-10.geralt ls -lah
+2016-04-27.15-59-13.geralt rm -rf .svn/

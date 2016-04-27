@@ -1,0 +1,6 @@
+2016-04-27.14-50-53.geralt rm -rf casmacat-plugin/
+2016-04-27.14-50-57.geralt rm -rf cat-api-server/
+2016-04-27.15-01-07.geralt rm -rf speech/
+2016-04-27.15-01-19.geralt rm -rf htr/
+2016-04-27.15-59-16.geralt ls -lah
+2016-04-27.15-59-18.geralt rm -rf .svn/

@@ -1,0 +1,53 @@
+* OS X compilation problem
+  for some reason, in OS X cmake fails to link inline functions in OS X. 
+  A workaround for that is to remove the inline directive which is indeed 
+  a C99 standard. However, a proper solution should be found.
+  Some people suggest to add an INLINE macro: 
+  http://lists.apple.com/archives/Darwin-dev/2006/Oct/msg00028.html
+
+
+* to conform to the posix and C99 standards, two options have been added
+  to the compilation. -std=c99 to conform to the C99 standard and 
+  -D_POSIX_C_SOURCE=200112L to conform to the latest posix (so far).
+  ref: http://www.opengroup.org/onlinepubs/009695399/ chapter 2.2
+
+
+
+* warning: C99 inline functions are not supported; using GNU89
+  warning: to disable this warning use -fgnu89-inline or the gnu_inline 
+           function attribute
+
+  gcc 4.2 (and previous I think) semantics for inline keyword are not C99 
+  compilant.  This will change in 4.3 so up to then we will have to bear 
+  these warnings. 
+  An unsatisfactory solution is to add this compiler option -fgnu89-inline
+  not present in all gcc versions.
+  ref. http://www.nabble.com/Inline-functions-in-C99-td15789469.html
+
+
+
+* warning: statement with no effect
+
+  When generating parses is due to the the base case which is and empty line.
+  We need that to put @$ that declares the lloc variable that stores the 
+  cursor position. 
+  An unsatisfactory solution is to init the first line. It may have secondary
+  efects:
+  @$.first_line = 0;
+
+* warning: the address of 'params' will always evaluate as 'true'
+  
+  snd_pcm_hw_params_alloca(ptr) is a macro that does an assert(ptr).
+  Thus, if ptr is a heap variable, the assert will be allways true.
+  Two solutions found:
+   1. redefine the macro to remove the assert(ptr)
+   2. add compiler parameter: -Wno-always-true
+  None of the solutions seem completely satisfactory to me. 
+  Solution 2 adopted. 
+  
+* warning: 'input' defined but not used
+
+  This warning can be avoided by defining YY_NO_INPUT in the flex preamble.
+  For more info see examples in viterbi/parsers and here:
+  http://www.nabble.com/PATCH:-gengtype-lex.l-warning-td21288882.html 
+

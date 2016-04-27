@@ -1,0 +1,4 @@
+2016-04-27.14-51-44.geralt mv trunk/* . && rm -rf branches/ tags/ trunk/
+2016-04-27.15-04-23.geralt less CMakeLists.txt 
+2016-04-27.15-09-46.geralt #less cmake.modules/
+2016-04-27.15-38-23.geralt ls -lah

@@ -1,0 +1,445 @@
+#! /bin/bash
+
+HAVE_DEPENDENCES=true
+DEPS=""
+MODULES=""
+
+deps=(svn make cmake)
+deps_names=(subversion make cmake)
+
+package_names=(prhlt iatros/library iatros/offline)
+PACKAGE_NAMES=(PRHLT IATROS IATROS_OFFLINE)
+optional_packages=(iatros/speech iatros/htr/online iatros/htr/offline)
+OPTIONAL_PACKAGES=(speech htr-online htr-offline)
+
+RULES=(all clean install rebuild_cache)
+
+
+function disable_package() {
+  echo "Disabling '$1'"
+
+  if test "$2" = "false"; then
+    count=${#OPTIONAL_PACKAGES[*]}
+    index=0
+    while [ "$index" -lt "$count" ]; do
+      if [ "$1" = "${OPTIONAL_PACKAGES[$index]}" ]; then
+        package="${optional_packages[$index]}"
+        break
+      fi
+      let "index++"
+    done
+  else
+    package=$1
+  fi
+  
+  if test -z "$packake"; then
+    new_packages=()
+    NEW_PACKAGES=()
+    count=${#package_names[*]}
+    index=0
+    while [ "$index" -lt "$count" ]; do
+      if [ "$package" != "${package_names[$index]}" ]; then
+        new_packages=("${new_packages[@]}" ${package_names[$index]})
+        NEW_PACKAGES=("${NEW_PACKAGES[@]}" ${PACKAGE_NAMES[$index]})
+      fi
+      let "index++"
+    done
+    package_names=("${new_packages[@]}")
+    PACKAGE_NAMES=("${NEW_PACKAGES[@]}")
+    return
+  fi
+
+  echo "Package '$1' does not exist and cannot be disabled"
+}
+
+function package_name() {
+  count=${#package_names[@]}
+  index=0
+  while [ "$index" -lt "$count" ]; do
+    if [ "$1" = "${package_names[$index]}" ]; then
+      echo "${PACKAGE_NAMES[$index]}"
+      return
+    fi
+    let "index++"
+  done
+  echo $1 | tr 'a-z-' 'A-Z_'
+}
+
+function realpath () {
+  python -c "import os, sys; print os.path.abspath(sys.argv[1]);" $*
+}
+
+function find_dependences() {
+  for dep in `seq 0 $((${#deps} - 1))`; do 
+    if which ${deps[$dep]} &> /dev/null; then
+      echo "${deps[$dep]} program found at `which ${deps[$dep]}`"
+    else
+      DEPS="${DEPS} ${deps_names[$dep]}"
+      echo "${deps[$dep]} program not found"
+      HAVE_DEPENDENCES=false
+    fi
+  done
+  
+  if test "$HAVE_DEPENDENCES" != "true"; then
+    echo "Please, install the missing programs and libraries"
+    echo "From ubuntu, type:"
+    echo "> sudo apt-get install${DEPS}"
+    echo
+    exit 1
+  fi
+}
+
+function usage() {
+  cat <<EOF
+\`configure' is a cmake wrapper script that resembles the autotools configure script.          
+
+Usage: configure [OPTION]... [VAR=VALUE]...
+
+To assign environment variables (e.g., CC, CFLAGS...), specify them as
+VAR=VALUE.  See below for descriptions of some of the useful variables.
+
+Defaults for the options are marked with *.
+
+Configuration:
+  -h, --help              display this help and exit
+  -v, --verbose           enable debug messages
+
+Installation directories:
+  --prefix PREFIX         install architecture-independent files in PREFIX
+
+System types:
+  --host HOST             cross-compile to build programs to run on HOST
+                          (local*,mingw32)
+
+Optional Features:
+  --build-type BUILD_TYPE set BUILD_TYPE (debug,relwithdebinfo*,release) 
+  --enable-eclipse PROJECT_NAME  enable the generation of Eclipse project 
+                          files that will be placed in the build directory
+                          under the project name PROJECT_NAME
+  --enable-dynamic-link   prefer dynamic linking to static for programs
+
+Optional Packages:
+EOF
+  count=${#optional_packages[@]}
+  index=0
+  while [ "$index" -lt "$count" ]; do
+    echo "  --without-${OPTIONAL_PACKAGES[index]}"
+    let "index++"
+  done
+
+  cat <<EOF
+
+By default, \`make install' will install all the files in
+\`the prefix/bin', \`the prefix/lib' etc.  You can specify
+an installation prefix other than \`${install_dir}' using \`--prefix',
+for instance \`--prefix=\$HOME'.                   
+EOF
+}
+
+function merge_eclipse {
+  local base="${package_names[0]}"
+  local name=$1
+  (
+    sed -re "1,5{s%<name>.*</name>%<name>${name}</name>%}" \
+         -e "s%${PWD}/${base}%${PWD}%" \
+         -e '/<link>/,$d' \
+         -e '/VERBOSE=1\|/,/<\/dictionary>/ {/<value><\/value>/d}' \
+         -e 's/\t/  /g' \
+         "$base"/.project 
+    if grep "<linkedResources" "$base"/.project &> /dev/null; then 
+      for module in ${package_names[*]};do
+        cat <<EOF
+    <link>
+      <name>sources/${module}</name>
+      <type>2</type>
+      <location>${source_dir}/${module}</location>
+    </link>
+EOF
+      done
+      cat <<EOF
+  </linkedResources>
+</projectDescription>
+EOF
+    fi
+  ) > .project
+
+  (
+    sed -re '/<pathentry/,$d' \
+         "$base"/.cproject 
+    for module in ${package_names[*]};do
+         grep "<pathentry" "$module"/.cproject | grep -v 'kind="src"'
+    done | sort -u | while read pe; do
+      if echo "$pe" | grep "include" &> /dev/null; then
+        if test -d "`echo $pe | sed -re 's/^.*include="//;s/".*$//'`"; then 
+          echo "$pe"
+        fi
+      else
+        echo "$pe"
+      fi
+    done
+#    for module in ${package_names[*]};do
+#      echo "<pathentry path=\"sources/${module}\" kind=\"src\"/>"
+#    done
+      cat <<EOF
+</storageModule>
+<storageModule moduleId="org.eclipse.cdt.make.core.buildtargets">
+<buildTargets>
+EOF
+    for rule in ${RULES[@]};do
+      cat <<EOF
+<target name="${rule}" path="" targetID="org.eclipse.cdt.make.MakeTargetBuilder">
+<buildCommand>/usr/bin/make</buildCommand>
+<buildArguments/>
+<buildTarget>${rule}</buildTarget>
+<stopOnError>true</stopOnError>
+<useDefaultCommand>false</useDefaultCommand>
+</target>
+EOF
+    done
+    cat <<EOF
+</buildTargets>
+</storageModule>
+EOF
+    echo '<storageModule moduleId="scannerConfiguration">'
+    sed -re '1,/scannerConfiguration/d' \
+         -e "s%<project id=\"[^\"]*\" name=\"[^\"]*\"/>%<project id=\"${name}.null.1\" name=\"${name}\"/>%" \
+         "$base"/.cproject 
+  ) > .cproject
+
+}
+
+function cmake_compile {
+  local module="$1"
+  local package=`package_name $module`
+  local svn="$2"
+  local dir="`realpath $3`"
+  local install_dir="$4"
+  local build_type="$5"
+  local toolchain="$6"
+
+  if test ! -d "$dir"; then
+   echo "Module '$module' not found"
+   echo "Aborting..."
+   return 1 
+  fi
+
+  local CMAKE_TOOLCHAIN=""
+  if test -n "$toolchain"; then
+    if test -f "${dir}/cmake.modules/Toolchain-${toolchain}.cmake"; then
+      CMAKE_TOOLCHAIN="-DCMAKE_TOOLCHAIN_FILE=${dir}/cmake.modules/Toolchain-${toolchain}.cmake"
+    else
+      echo "Toolchain unknown"
+      exit 1
+    fi
+  fi
+
+  build_dir="$1"
+  mkdir -p "${build_dir}"
+
+  pushd "${build_dir}"
+  echo "cmake ${dir} -DCMAKE_BUILD_TYPE='$build_type' -DCMAKE_INSTALL_PREFIX='$install_dir' $CMAKE_TOOLCHAIN $CMAKE_EXTRA $BUILD_TREES" > cmake.sh
+  sh cmake.sh
+  if test "$?" -ne 0; then echo "Error in cmake for module $module. Check if there are any missing libraries. "; popd; return 1; fi
+  if test "$?" -ne 0; then echo "Error compiling module $module"; popd; return 1; fi
+  BUILD_TREES="${BUILD_TREES} -D${package}_BUILD_TREE=${PWD}"
+  popd
+
+  return 0
+}
+
+#TEMPDIR=`mktemp -d /tmp/$(basename $0).XXXXXXXXXX` || exit 1
+#trap 'rm -rf $TEMPDIR; exit 1' TERM INT KILL QUIT
+#trap 'rm -rf $TEMPDIR' EXIT
+
+source_dir="$(dirname `realpath $BASH_SOURCE`)"
+install_dir="$PWD"
+build_type="relwithdebinfo"
+toolchain=""
+enable_dynamic_link=0
+name="iatros"
+
+for arg
+do
+  delim=""
+  if [[ "$arg" == --without-* ]]; then
+    disable_package "${arg#--without-}" false
+  else
+    case "$arg" in
+    #translate --gnu-long-options to -g (short options)
+      --prefix) args="${args}-i ";;
+      --enable-eclipse) args="${args}-e ";;
+      --build-type) args="${args}-b ";;
+      --host) args="${args}-t ";;
+      --verbose) args="${args}-v ";;
+      --help) args="${args}-h ";;
+      --enable-dynamic-link) args="${args}-l ";;
+      #pass through anything else
+      *) [[ "${arg:0:1}" == "-" ]] || delim="\""
+          args="${args}${delim}${arg}${delim} ";;
+    esac
+  fi
+done
+ 
+#Reset the positional parameters to the short options
+echo $args
+eval set -- $args
+ 
+while getopts  "e:i:b:t:lvh" OPTION
+do
+  case $OPTION in
+    i) install_dir="`realpath \"$OPTARG\"`";;
+    b) build_type="$OPTARG";;
+    t) toolchain="$OPTARG";;
+    e) generator="eclipse";name="$OPTARG";;
+    l) enable_dynamic_link=1;;
+    v) set -x;;
+    h) usage; exit 1;;
+    *) echo $OPTARG is an unrecognized option;
+       usage; exit 1;;
+  esac
+done
+shift $[ OPTIND - 1 ]
+
+if test "`realpath ${source_dir}`" = "${PWD}"; then
+  cat <<EOF
+Your are trying to build the software in the directory where
+the sources are located. This is highly unrecommended due to
+the great amount of new files will be created in that directory.
+It is much cleaner to create an empty directory to hold the
+build system. e.g.
+
+> mkdir build
+> cd build
+> ../configure
+
+Still, if you want to build inside your source directory
+type 'yes'.
+Do you want to continue (yes/NO)?
+EOF
+  read  REPLY
+  if test "$REPLY" != "yes"; then
+    exit 1
+  fi
+fi
+
+
+find_dependences
+
+HAS_SVN=0
+for module in ${package_names[*]};do
+  if test -d "${source_dir}/${module}/.svn"; then HAS_SVN=1; fi
+done
+
+
+if [ "$toolchain" = "local" ]; then unset toolchain; fi 
+
+BUILD_TREES=""
+CMAKE_EXTRA="$CMAKE_EXTRA -DCMAKE_EDIT_COMMAND='`which cmake`'"
+if test "$generator" = "eclipse"; then
+  CMAKE_EXTRA="$CMAKE_EXTRA -G 'Eclipse CDT4 - Unix Makefiles'"
+fi
+if test "$enable_dynamic_link" -eq 0; then 
+  CMAKE_EXTRA="$CMAKE_EXTRA -DSTATIC=ON"
+fi
+
+for module in ${package_names[*]};do
+  cmake_compile "$module" ${module} "$source_dir/${module}" "$install_dir" "$build_type" "$toolchain"
+  if test "$?" -ne 0; then
+    MODULES="$MODULES $module"
+    echo "There was an error compiling the module $module. This module will be skipped and might break the compilation of the following modules. Please, report the bug to the administrators "
+    disable_package "$module"
+    echo packages: ${package_names[*]}
+  fi
+done
+
+rm -f "Makefile"
+cat > "Makefile" <<EOF
+RULES= ${RULES[@]} 
+
+\$(RULES):
+EOF
+for module in ${package_names[*]};do
+  echo "	@\$(MAKE) -C '${module}' \$@" >> Makefile
+done
+
+source_parent=`dirname $source_dir`
+source_name=`basename $source_dir`
+tar_files=("${package_names[@]}" configure configure.README)
+for i in `seq 0 $((${#tar_files[@]}-1))`;do
+  tar_files[$i]="$source_name/${tar_files[i]}"
+done
+cat >> "Makefile" <<EOF
+
+package:
+	tar -czvf "${source_name}.tgz" -C "$source_parent" ${tar_files[@]} --dereference --exclude .svn --exclude .history
+svnpackage:
+	tar -czvf "${source_name}-svn.tgz" -C "$source_parent" ${tar_files[@]} --dereference --exclude .history
+EOF
+	
+if test $HAS_SVN -eq 1; then
+  echo >> Makefile
+  echo >> Makefile
+  echo "SVNRULES= update status info" >> Makefile 
+  echo >> Makefile
+  echo "\$(SVNRULES):" >> Makefile
+  for module in ${package_names[*]};do
+    echo "	@echo; echo" >> Makefile
+    echo "	svn \$@ '${source_dir}/${module}'" >> Makefile
+  done
+  
+  echo >> Makefile
+  echo "patch:" >> Makefile
+  echo "	@\$(RM) -rf patches.tar patches.tar.gz" >> Makefile
+  for module in ${package_names[*]};do
+    if test -d "${source_dir}/${module}/.svn"; then
+      echo "	@svn diff '${source_dir}/${module}' > '${module}/rev\$(shell svn info '${source_dir}/${module}' | grep '^Rev' | cut -d ' ' -f 2).patch'" >> Makefile
+      echo -n "	@if test -s '${module}/rev\$(shell svn info '${source_dir}/${module}' | grep '^Rev' | cut -d ' ' -f 2).patch'; then " >> Makefile
+      echo -n "tar -uvf patches.tar '${module}/rev\$(shell svn info '${source_dir}/${module}' | grep '^Rev' | cut -d ' ' -f 2).patch';" >> Makefile
+      echo "fi" >> Makefile
+    fi
+  done
+  echo "	@gzip patches.tar" >> Makefile
+fi
+
+cat >> "Makefile" <<EOF
+
+help:
+	@echo "This is a list of the Makefile rules:"
+	@echo "  all:      compile the software. the default rule (same as 'make' alone)"
+	@echo "  clean:    clean the build directory of objects, programs and other generated files"
+	@echo "  install:  install the software in '${install_dir}'" 
+	@echo "  rebuild_cache: rebuild cmake cache in case CMakeLists.txt files have been modified"
+	@echo "  package:  create a software package removing .svn entries"
+EOF
+if test $HAS_SVN -eq 1; then
+cat >> "Makefile" <<EOF
+	@echo "  svnpackage: create a software package including .svn entries"
+	@echo "  update:   updates svn"
+	@echo "  status:   prints svn status of all modules"
+	@echo "  info:     prints svn info of all modules"
+	@echo "  patch:    creates a patches.tar.gz file with svn changes"
+	@echo "            that can be submitted to the developers in case"
+	@echo "            changes are to be added to the software"
+EOF
+fi
+
+if test "$generator" = "eclipse"; then
+  merge_eclipse "$name"
+fi
+
+if test "$MODULES" != ""; then
+  echo "These modules could not be installed: $MODULES"
+fi
+
+cat <<EOF
+
+To compile:
+>> make
+
+To install in '${install_dir}':
+>> make install
+
+For more info regarding the Makefile rules:
+>> make help
+EOF
+
